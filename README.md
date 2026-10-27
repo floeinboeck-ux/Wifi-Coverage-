@@ -27,6 +27,13 @@ npm run build      # Typprüfung + Produktions-Build nach dist/
 npm run preview    # Build lokal ansehen
 ```
 
+## Hosting
+
+Jeder Push auf `main` testet, baut und veröffentlicht die App per GitHub Actions auf GitHub Pages:
+https://floeinboeck-ux.github.io/Wifi-Coverage-/
+
+Einmalig nötig: Repo auf „Public“ stellen und unter Settings → Pages als Source „GitHub Actions“ wählen.
+
 Der Build in `dist/` ist statisch und läuft auf jedem Webserver, auch unter einem Unterpfad
 (z. B. GitHub Pages). Für Service Worker und „Zum Home-Bildschirm“ braucht es HTTPS.
 
