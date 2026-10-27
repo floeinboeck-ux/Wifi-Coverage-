@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>WLAN-Abdeckungskarte</title>
+<meta name="description" content="WLAN-Abdeckung im Grundriss messen, als Heatmap anzeigen und Repeater-Standorte planen.">
+<meta name="theme-color" content="#eef2f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0e1319" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="WLAN-Karte">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="./src/styles.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>WLAN-Abdeckungskarte</h1>
+    <span class="sub" id="stat"></span>
+  </div>
+
+  <div class="chips" id="floors" role="toolbar" aria-label="Etagen"></div>
+
+  <div class="bar">
+    <div class="seg" role="group" aria-label="Messgröße" id="metric">
+      <button data-m="dbm" aria-pressed="true">Signal dBm</button>
+      <button data-m="mbps" aria-pressed="false">Down</button>
+      <button data-m="up" aria-pressed="false">Up</button>
+      <button data-m="ping" aria-pressed="false">Ping</button>
+    </div>
+    <select id="sigSrc" class="srcsel" aria-label="Signal von"></select>
+    <div class="grp"><span class="seglbl">Tippen setzt</span>
+      <div class="seg" role="group" aria-label="Tippen setzt" id="tap">
+        <button data-t="pt" aria-pressed="true">Messpunkt</button>
+        <button data-t="dev" aria-pressed="false">Gerät</button>
+        <button data-t="off" aria-pressed="false">nichts</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="demoBanner" class="banner" hidden>
+    <span>Das ist ein Beispiel-Grundriss mit Beispielwerten.</span>
+    <button id="demoDel">Beispiel entfernen</button>
+  </div>
+
+  <div id="planBox"></div>
+  <p class="hint" id="hint"></p>
+
+  <div class="legend">
+    <div class="ramp"></div>
+    <div class="ticks num" id="ticks"></div>
+  </div>
+  <p class="storewarn" id="storeWarn" hidden>Speicher voll: Änderungen werden nicht mehr gesichert. Nutze kleinere Grundriss-Fotos oder lösche eine Etage.</p>
+
+  <button class="btn pri wide" id="repBtn">Stockwerk fertig: Report erstellen</button>
+
+  <section class="card">
+    <div class="cardhead"><h2>Router &amp; Repeater</h2><button class="btn sm" id="devAdd">+ Gerät</button></div>
+    <div class="devlist" id="devList"></div>
+  </section>
+
+  <section class="card">
+    <h2>Räume auf dieser Etage</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Raum</th><th class="r">Pkt.</th><th class="r">ø dBm</th><th class="r">min</th><th>Verbunden mit</th><th>Status</th></tr></thead>
+      <tbody id="rooms"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2>Daten</h2>
+    <p class="note">Alles wird nur auf diesem Gerät gespeichert. Sichere ab und zu eine Kopie, z. B. bevor du Browserdaten löschst.</p>
+    <div class="btns">
+      <button class="btn sm" id="dataExport">Daten exportieren</button>
+      <button class="btn sm" id="dataImportBtn">Daten importieren</button>
+      <input type="file" id="dataImport" accept="application/json,.json" hidden>
+    </div>
+    <p class="note" id="dataMsg" hidden></p>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>So misst du am iPhone</summary>
+      <ol class="steps" style="margin-top:10px">
+        <li>App „AirPort-Dienstprogramm“ von Apple laden und in den iOS-Einstellungen → Apps → AirPort-Dienstprogramm den „WLAN-Scanner“ aktivieren.</li>
+        <li>Mobile Daten ausschalten, an den Messpunkt stellen, Handy ruhig halten.</li>
+        <li>„WLAN-Scan“ → „Scannen“, 20 bis 30 Sekunden laufen lassen, stoppen und das Protokoll teilen bzw. kopieren.</li>
+        <li>Hier den Standort im Plan antippen und das Protokoll einfügen. Die App nimmt pro Sender den Median, wählt den stärksten Sender deines Netzes als „verbunden“ und erkennt neue Geräte.</li>
+        <li>Optional den RTR-Netztest starten und das Ergebnis ins zweite Feld einfügen.</li>
+      </ol>
+    </details>
+    <details>
+      <summary>Woran erkenne ich Router oder Repeater?</summary>
+      <p class="rec" style="margin-top:8px">Im WLAN-Scan hat jedes Gerät eine eigene MAC-Adresse (BSSID), meist eine pro Band, auch wenn alle denselben Netznamen haben. Hinterlege einmal alle BSSIDs bei Router und Repeater (am besten neben dem Gerät scannen: der stärkste Eintrag gehört zu ihm). Beim Messpunkt tippst du dann nur die letzten Zeichen der BSSID ein, mit der dein Netz im Scan am stärksten ist, und nimmst deren dBm-Wert. Die App wählt Gerät und Band automatisch. Der Scan zeigt nicht, mit welchem Gerät das iPhone tatsächlich verbunden ist; meist ist es das stärkste. Bei Zweifeln hilft die Client-Übersicht deines Routers. Eine Webseite darf die BSSID am iPhone nicht selbst auslesen, deshalb dieser kleine Zwischenschritt.</p>
+    </details>
+    <details>
+      <summary>Download, Upload und Ping messen</summary>
+      <p class="rec" style="margin-top:8px">Starte am Messpunkt den RTR-Netztest, tippe nach dem Test auf „Teilen“ → „Kopieren“ und füge den Text im Messpunkt ein. Download, Upload, Ping und Zeitpunkt werden automatisch übernommen. Mobile Daten vorher ausschalten, sonst misst der Test eventuell nicht über WLAN. Die Werte sind durch deinen Internetanschluss begrenzt; für die Repeater-Planung bleibt der dBm-Wert die wichtigste Größe.</p>
+    </details>
+    <details>
+      <summary>Faustregeln für dBm</summary>
+      <table style="margin-top:8px">
+        <tr><td class="num">≥ −55</td><td>sehr gut</td></tr>
+        <tr><td class="num">−56 … −67</td><td>gut, auch für Video-Calls</td></tr>
+        <tr><td class="num">−68 … −75</td><td>schwach, Streaming kann ruckeln</td></tr>
+        <tr><td class="num">&lt; −75</td><td>kritisch, Abbrüche wahrscheinlich</td></tr>
+      </table>
+    </details>
+  </section>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="sheet" id="ptSheet" hidden role="dialog" aria-modal="true" aria-labelledby="ptTitle">
+  <div class="in">
+    <h3 id="ptTitle">Messpunkt</h3>
+    <div class="row2">
+      <label class="f">Raum / Zone<input type="text" id="ptRoom" list="roomList" autocomplete="off"></label>
+      <label class="f">Notiz (optional)<input type="text" id="ptLabel" placeholder="z. B. Schreibtisch" autocomplete="off"></label>
+    </div>
+    <datalist id="roomList"></datalist>
+    <div class="test">
+      <label class="f">WLAN-Scan-Protokoll einfügen
+        <textarea id="ptScan" class="rtr" rows="3" placeholder="SSID, BSS, RSSI, Kanal, Datum&#10;&quot;Mein WLAN&quot;, &quot;0C:72:74:F0:88:20&quot;, &quot;-57&quot;, &quot;36&quot;, &quot;13:18:47&quot;" spellcheck="false"></textarea>
+      </label>
+      <p class="match" id="ptScanMsg" hidden></p>
+      <div class="pick" id="ptSsid" hidden></div>
+      <div class="tbl" id="ptScanTbl" hidden></div>
+      <div class="newdev" id="ptNew" hidden></div>
+    </div>
+    <div class="f">Verbunden mit
+      <div class="pick" id="ptDev"></div>
+      <p class="note" id="ptDevHint" hidden></p>
+    </div>
+    <label class="f">Signalstärke (RSSI)
+      <span class="dbm"><span>−</span><input type="text" id="ptDbm" inputmode="numeric" pattern="[0-9]*" placeholder="62" maxlength="3"><span style="font-size:15px;color:var(--muted)">dBm</span></span>
+    </label>
+    <details id="ptManual">
+      <summary class="note">Ohne Protokoll: BSSID-Ende eingeben</summary>
+      <label class="f" style="margin-top:8px">BSSID-Ende aus dem WLAN-Scan
+        <span class="bssid"><span class="pre">…:</span><input type="text" id="ptBssid" placeholder="34:56" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="8"></span>
+      </label>
+      <p class="match" id="ptMatch" hidden></p>
+    </details>
+    <div class="test">
+      <label class="f">RTR-Netztest-Ergebnis einfügen
+        <textarea id="ptRtr" class="rtr" rows="3" placeholder="Testzeitpunkt: …&#10;Download: 162 Mbit/s&#10;Upload: 193 Mbit/s&#10;Ping: 12 ms" spellcheck="false"></textarea>
+      </label>
+      <div class="res">
+        <div><small>Download</small><b id="ptMbps">–</b></div>
+        <div><small>Upload</small><b id="ptUp">–</b></div>
+        <div><small>Ping</small><b id="ptPing">–</b></div>
+        <div><small>Gemessen</small><b id="ptAt" style="font-size:14px">–</b></div>
+      </div>
+      <p class="match" id="ptRtrMsg" hidden></p>
+    </div>
+    <p class="err" id="ptErr" hidden></p>
+    <div class="btns">
+      <button class="btn pri" id="ptSave">Speichern</button>
+      <button class="btn" id="ptCancel">Abbrechen</button>
+      <button class="btn del" id="ptDel" hidden>Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="dvSheet" hidden role="dialog" aria-modal="true" aria-labelledby="dvTitle">
+  <div class="in">
+    <h3 id="dvTitle">Gerät</h3>
+    <label class="f">Name<input type="text" id="dvName" placeholder="z. B. Repeater OG Gang" autocomplete="off"></label>
+    <div class="f">Typ
+      <div class="pick" id="dvType">
+        <button data-v="router" aria-pressed="true">Router</button>
+        <button data-v="repeater" aria-pressed="false">Repeater</button>
+        <button data-v="mesh" aria-pressed="false">Mesh-Knoten</button>
+      </div>
+    </div>
+    <div class="f">BSSID / MAC-Adressen (eine pro Band)
+      <div class="macs" id="dvMacs"></div>
+      <button type="button" class="btn sm" id="dvMacAdd" style="align-self:flex-start">+ MAC-Adresse</button>
+    </div>
+    <p class="note" id="dvPos"></p>
+    <button type="button" class="btn sm" id="dvPlace" style="align-self:flex-start" hidden>Position im Plan setzen</button>
+    <p class="err" id="dvErr" hidden></p>
+    <div class="btns">
+      <button class="btn pri" id="dvSave">Speichern</button>
+      <button class="btn" id="dvCancel">Abbrechen</button>
+      <button class="btn del" id="dvDel" hidden>Löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="sheet" id="flSheet" hidden role="dialog" aria-modal="true" aria-labelledby="flTitle">
+  <div class="in">
+    <h3 id="flTitle">Etage</h3>
+    <label class="f">Name<input type="text" id="flName" placeholder="z. B. Erdgeschoss" autocomplete="off"></label>
+    <label class="f">Grundriss (Foto oder Bild)<input type="file" id="flFile" accept="image/*"></label>
+    <p class="err" id="flErr" hidden></p>
+    <div class="btns">
+      <button class="btn pri" id="flSave">Speichern</button>
+      <button class="btn" id="flCancel">Abbrechen</button>
+      <button class="btn del" id="flDel" hidden>Etage löschen</button>
+    </div>
+  </div>
+</div>
+
+<div class="report" id="report" hidden role="dialog" aria-modal="true" aria-labelledby="repTitle">
+  <div class="in">
+    <div class="rephead">
+      <div><h2 id="repTitle">Report</h2><span class="sub" id="repDate"></span></div>
+      <button class="btn sm" id="repClose">Schließen</button>
+    </div>
+    <div class="kpis" id="repKpis"></div>
+    <section class="card">
+      <h2>Abdeckung nach Signal</h2>
+      <div class="cov" id="repCov"></div>
+      <div class="covleg" id="repCovLeg"></div>
+    </section>
+    <section class="card">
+      <h2>Empfehlungen</h2>
+      <ol class="recs" id="repRecs"></ol>
+    </section>
+    <section class="card">
+      <h2>Heatmap</h2>
+      <div id="repImg"></div>
+      <p class="note">Gefüllte Kreise: Messpunkte. Quadrate: Geräte. Gestrichelter Ring: vorgeschlagener Repeater-Standort. Bild lange drücken, um es zu sichern.</p>
+    </section>
+    <section class="card">
+      <h2>Geräte</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Gerät</th><th>Typ</th><th class="r">Pkt.</th><th class="r">ø dBm</th><th class="r">min</th><th class="r">gut empf.</th><th class="r">ø Down</th><th class="r">ø Up</th></tr></thead>
+        <tbody id="repDevs"></tbody>
+      </table></div>
+    </section>
+    <section class="card">
+      <h2>Räume</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Raum</th><th class="r">Pkt.</th><th class="r">ø dBm</th><th class="r">min</th><th>Verbunden mit</th><th>Status</th></tr></thead>
+        <tbody id="repRooms"></tbody>
+      </table></div>
+    </section>
+    <section class="card">
+      <h2>Exportieren</h2>
+      <p class="note">Für das Smart-Home-Handbuch oder zum Archivieren.</p>
+      <div class="btns">
+        <button class="btn" id="repCopy">Report als Text kopieren</button>
+        <button class="btn" id="repJson">Report-Daten (JSON)</button>
+        <button class="btn" id="repImgSave">Heatmap-Bild speichern</button>
+      </div>
+    </section>
+    <p class="note" id="repCopyMsg" hidden></p>
+    <textarea class="copy" id="repText" readonly hidden></textarea>
+  </div>
+</div>
+
+
+<script type="module" src="./src/main.ts"></script>
+</body>
+</html>
